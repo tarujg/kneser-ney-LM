@@ -1,65 +1,41 @@
 package edu.berkeley.nlp.assignments.assign1.student;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 
 import edu.berkeley.nlp.langmodel.NgramLanguageModel;
 import edu.berkeley.nlp.langmodel.EnglishWordIndexer;
-import edu.berkeley.nlp.util.StringIndexer;
 
 public class KneserNeyLm implements NgramLanguageModel {
 
-    // Start symbol to be prepended to all sentences
+    // Constants 
     static final String START = NgramLanguageModel.START;
-    // Start symbol to be appended to all sentences
     static final String STOP = NgramLanguageModel.STOP;
-
-    // discounting factor
-    double d = 0.75;
-    // probability
-    double unkown_prop = 0.0001;
-
-    static final int UNIGRAM_COUNT = 495172;//1000000;//495172; //Add 10000 for errors
+    double DISCOUNT_3 = 0.88;
+    double DISCOUNT_2 = 0.9;
+    double UNK_PROB = 0.0001;
+    double LOAD_FACTOR = 0.8;
+    static final int UNIGRAM_COUNT = 495172;
     static final int BIGRAM_COUNT = 8374230;
     static final int TRIGRAM_COUNT = 41627672;
-
     static final int BITSPERWORD = 20;
     static final long BITMASK = (1 << BITSPERWORD) - 1;
 
-    // Raw counts ngrams
-    /*
-    OpenHash trigramCounts = new OpenHash(TRIGRAM_COUNT);
-    OpenHash bigramCounts = new OpenHash(BIGRAM_COUNT);
-    long[] unigramCounts = new long[UNIGRAM_COUNT];
-    OpenHash bigramFertility = new OpenHash(BIGRAM_COUNT);;
-    long[] unigramFertility = new long[UNIGRAM_COUNT];
-    long totalFertility = 0;
-
-    OpenHash w1w2x = new OpenHash(BIGRAM_COUNT);;
-    long[] w1x = new long[UNIGRAM_COUNT];
-
-    // Denominators for all ngrams
-    long[] bigramNormalizer = new long[UNIGRAM_COUNT];
-    */
-
-    private OpenHash trigramCounts = new OpenHash(TRIGRAM_COUNT);
-    private OpenHash bigramCounts = new OpenHash(BIGRAM_COUNT);
-    private long[] unigramCounts = new long[UNIGRAM_COUNT];
+    // Count Tables
+    private OAHash trigramCounts = new OAHash(TRIGRAM_COUNT,LOAD_FACTOR);
+    private OAHash bigramCounts = new OAHash(BIGRAM_COUNT,LOAD_FACTOR);
+    private int[] unigramCounts = new int[UNIGRAM_COUNT];
 
     // Fertility Counts
-    private OpenHash bigramFertility = new OpenHash(BIGRAM_COUNT);
-    ;
-    private long[] unigramFertility = new long[UNIGRAM_COUNT];
-    private long totalFertility = 0;
-
-    private OpenHash w1w2x = new OpenHash(BIGRAM_COUNT);
-    ;
-    private long[] w1x = new long[UNIGRAM_COUNT];
+    private OAHash bigramFertility = new OAHash(BIGRAM_COUNT,LOAD_FACTOR);
+    private int[] unigramFertility = new int[UNIGRAM_COUNT];
+    private int totalFertility = 0;
+    private OAHash bigramAlphaNumerator = new OAHash(BIGRAM_COUNT,LOAD_FACTOR);
+    private int[] unigramAlphaNumerator = new int[UNIGRAM_COUNT];
 
     // Denominators for all ngrams
-    private long[] bigramNormalizer = new long[UNIGRAM_COUNT];
+    private int[] bigramNormalizer = new int[UNIGRAM_COUNT];
 
     /**
      * Initializes the KneserNeyLm by populating all the counts and tables above
@@ -90,13 +66,13 @@ public class KneserNeyLm implements NgramLanguageModel {
                     //First two words of sentence
                     unigramCounts[indexedSentence[0]]++;
                     unigramCounts[indexedSentence[1]]++;
-                    bigramCounts.put(bitIndexer(indexedSentence, 2, 0), 1);
+                    bigramCounts.incrementkey(bitIndexer(indexedSentence, 2, 0));
                 }
 
                 // Add counts for the ith word
                 unigramCounts[indexedSentence[i]]++;
-                bigramCounts.put(bitIndexer(indexedSentence, 2, i - 1), 1);
-                trigramCounts.put(bitIndexer(indexedSentence, 3, i - 2), 1);
+                bigramCounts.incrementkey(bitIndexer(indexedSentence, 2, i - 1));
+                trigramCounts.incrementkey(bitIndexer(indexedSentence, 3, i - 2));
             }
         }
 
@@ -104,8 +80,8 @@ public class KneserNeyLm implements NgramLanguageModel {
         Iterator it = trigramCounts.getIterator();
         while (it.hasNext()) {
             long key = (long) it.next();
-            bigramFertility.put(bitExtracted(key, 2, 1), 1);
-            w1w2x.put(bitExtracted(key, 2, 0), 1);
+            bigramFertility.incrementkey(bitExtracted(key, 2, 1));
+            bigramAlphaNumerator.incrementkey(bitExtracted(key, 2, 0));
         }
 
         // Set Bigram Normalizer
@@ -120,17 +96,10 @@ public class KneserNeyLm implements NgramLanguageModel {
         while (it.hasNext()) {
             long key = (long) it.next();
             unigramFertility[(int) bitExtracted(key, 1, 1)]++;
-            w1x[(int) bitExtracted(key, 1, 0)]++;
+            unigramAlphaNumerator[(int) bitExtracted(key, 1, 0)]++;
             totalFertility++;
         }
-
         System.out.println("Done building KneserNey LanguageModel.");
-        System.out.println(bigramCounts.size());
-        System.out.println(trigramCounts.size());
-
-        System.out.println(unigramFertility[149228]);
-        printNGram(new int[] {149228},0,1);
-
     }
 
     /**
@@ -153,13 +122,7 @@ public class KneserNeyLm implements NgramLanguageModel {
     public double getNgramLogProbability(int[] ngram, int from, int to) {
         if (ngram[to - 1] >= unigramFertility.length)
             return -100;
-        double a = Math.log(getNgramProbability(ngram, from, to));
-        if (a < -100) {
-            //System.out.println(a);
-            //printNGram(ngram, from, to);
-        }
-
-        return a;
+        return Math.log(getNgramProbability(ngram, from, to));
     }
 
     public double getNgramProbability(int[] ngram, int from, int to) {
@@ -167,48 +130,28 @@ public class KneserNeyLm implements NgramLanguageModel {
         if (to - from > 3) {
             System.out.println("WARNING: to - from > 3 for Trigram Model");
         }
-        /*
-        if(to-from == 3)
-        {
-            long trigramIndex = bitIndexer(ngram, 3, from);
-            long bigramIndex = bitIndexer(ngram, 2, from);
-
-            double denominator = bigramCounts.get(bigramIndex);
-            if(denominator <= 0) {
-                return getNgramProbability(ngram,from+1,to);
-            }
-            else {
-
-            }
-
-        }
-
-
-        */
         if (to - from == 3) {
-            // Handle Trigram probability
             long trigramIndex = bitIndexer(ngram, 3, from);
             long bigramIndex = bitIndexer(ngram, 2, from);
 
             double denominator = bigramCounts.get(bigramIndex);
-
             return (denominator <= 0) ?
                     getNgramProbability(ngram, from + 1, to) :
                     //P_continuation
-                    Math.max(trigramCounts.get(trigramIndex) - d, 0) / denominator +
+                    Math.max(trigramCounts.get(trigramIndex) - DISCOUNT_3, 0) / denominator +
                             //BackOff - alpha*P_backoff
-                            ((double) w1w2x.get(bigramIndex) * d / denominator) * getNgramProbability(ngram, from + 1, to);
+                            ((double) bigramAlphaNumerator.get(bigramIndex) * DISCOUNT_3 / denominator) * getNgramProbability(ngram, from + 1, to);
         } else if (to - from == 2) {
             long bigramIndex = bitIndexer(ngram, 2, from);
             return (bigramNormalizer.length > ngram[from] && bigramNormalizer[ngram[from]] > 0) ?
                     //P_continuation
-                    (Math.max(bigramFertility.get(bigramIndex) - d, 0) / (double) bigramNormalizer[ngram[from]]) +
+                    (Math.max(bigramFertility.get(bigramIndex) - DISCOUNT_2, 0) / (double) bigramNormalizer[ngram[from]]) +
                             //BackOff - alpha*P_backoff
-                            ((double) w1x[ngram[from]] * d / (double) bigramNormalizer[ngram[from]]) * getNgramProbability(ngram, from + 1, to)
+                            ((double) unigramAlphaNumerator[ngram[from]] * DISCOUNT_2 / (double) bigramNormalizer[ngram[from]]) * getNgramProbability(ngram, from + 1, to)
                     : getNgramProbability(ngram, from + 1, to);
         } else if (to - from == 1 && ngram[from] < unigramFertility.length && ngram[from] >= 0) {
             return (double) unigramFertility[ngram[from]] / (double) totalFertility;
-        } else return unkown_prop;
+        } else return UNK_PROB;
 
     }
 
@@ -243,23 +186,5 @@ public class KneserNeyLm implements NgramLanguageModel {
         k *= BITSPERWORD;
         p *= BITSPERWORD;
         return (((1L << k) - 1) & (number >> p));
-    }
-
-    private static void printNGram(int[] ngram, int from, int to)
-    {
-        String[] words = new String[to - from];
-        for (int i = from; i < to; i++)
-        {
-            if (ngram[i] != -1) {
-                words[i] = EnglishWordIndexer.getIndexer().get(ngram[i]);
-            }
-            else {
-                words[i] = "<UNK>";
-            }
-        }
-        System.out.println("---------------------");
-        System.out.println(Arrays.toString(ngram));
-        System.out.println(Arrays.toString(words));
-        System.out.println("---------------------");
     }
 }

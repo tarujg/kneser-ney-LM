@@ -1,69 +1,41 @@
 package edu.berkeley.nlp.assignments.assign1.student;
 
-import edu.berkeley.nlp.util.StringIndexer;
-
 import java.util.Arrays;
 import java.util.Iterator;
 
-public class OpenHash {
+public class OAHash {
 
     private long[] keys;
 
     private int[] values;
 
-    private int size = 0;
+    private final long EMPTY_KEY = -1;
 
-    private final long EMPTY_KEY = -1;//null;
+    public void incrementkey(long k) {
+        int pos = getInitialPos(k, keys);
+        long curr = keys[pos];
+        while ((curr != EMPTY_KEY) && (curr!=k)) {
+            pos++;
+            if (pos == keys.length) pos = 0;
+            curr = keys[pos];
+        }
 
-    private final double MAX_LOAD_FACTOR;
-
-    public boolean put(long k, int v) {
-//        if (size / (double) keys.length > MAX_LOAD_FACTOR) {
-//            rehash();
-//        }
-        return putHelp(k, v, keys, values);
-
+        values[pos] += 1;
+        if (curr == EMPTY_KEY) {
+            keys[pos] = k;
+        }
     }
 
-    public OpenHash() { this(10); }
-
-    public OpenHash(int initialCapacity_) {
+    public OAHash(int initialCapacity_) {
         this(initialCapacity_, 0.7);
     }
 
-    public OpenHash(int initialCapacity_, double loadFactor) {
+    public OAHash(int initialCapacity_, double loadFactor) {
         int cap = Math.max(5, (int) (initialCapacity_ / loadFactor));
-        MAX_LOAD_FACTOR = loadFactor;
         values = new int[cap];
         keys = new long[cap];
         Arrays.fill(values, 0);
         Arrays.fill(keys, EMPTY_KEY);
-    }
-
-    public int size() {
-        return size;
-    }
-
-    /**
-     * @param k
-     * @param v
-     */
-    private boolean putHelp(long k, int v, long[] keyArray, int[] valueArray) {
-        int pos = getInitialPos(k, keyArray);
-        long curr = keyArray[pos];
-        while ((curr != EMPTY_KEY) && (curr!=k)) {
-            pos++;
-            if (pos == keyArray.length) pos = 0;
-            curr = keyArray[pos];
-        }
-
-        valueArray[pos] += 1; //= v;
-        if (curr == EMPTY_KEY) {
-            size++;
-            keyArray[pos] = k;
-            return true;
-        }
-        return false;
     }
 
     /**
@@ -79,8 +51,7 @@ public class OpenHash {
     }
 
     public int get(long k) {
-        int pos = find(k);
-        return values[pos];
+        return values[find(k)];
     }
 
     /**
@@ -125,16 +96,14 @@ public class OpenHash {
         private int next, end;
     }
 
-    public class MyIterator extends MapIterator{
-        public Object next(){
+    public class Iter extends MapIterator {
+        public Object next() {
             return nextIndex();
         }
-
     }
 
-    public MyIterator getIterator(){
-        MyIterator it = new MyIterator();
-        return it;
+    public Iter getIterator(){
+        return new Iter();
     }
 
 }
